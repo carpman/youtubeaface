@@ -1,0 +1,59 @@
+#!/bin/env python2.7
+
+# Youtubeaface, command line youtube subscription tracker
+# Daniel Jackson, carpman@voidptr.org, 2013
+# -------------------------------------------------------
+# License GPLv3, see LICENSE file for more details
+
+import feedparser
+import youtube_dl
+import json
+import os
+import datetime
+import re
+
+youtube_rss_generic_url = "https://gdata.youtube.com/feeds/api/users/%s/uploads"
+
+def download_video(feed_item):
+    ydl = youtube_dl.YoutubeDL({'outtmpl': '%(uploader)s - %(title)s.%(ext)s'})
+    ydl.add_default_info_extractors()
+    return ydl.extract_info(feed_item['link'])
+
+def open_or_create_config():
+    if not os.path.exists(os.path.expanduser('~/.youtubeaface')):
+        os.mkdir('~/.youtubeaface')
+    if not os.path.exists(os.path.expanduser('~/.youtubeaface/config.json')):
+        default_options = {'channels': [], 'max_vids_per_channel': 3}
+        with open(os.path.expanduser('~/.youtubeaface/config.json'), 'w') as new_config_file:
+            new_config_file.write(json.dumps(default_options))
+    with open(os.path.expanduser('~/.youtubeaface/config.json'), 'r') as config_file:
+        return json.loads(config_file.read())
+
+def open_or_create_cache():
+    if not os.path.exists(os.path.expanduser('~/.youtubeaface')):
+        os.mkdir('~/.youtubeaface')
+    if not os.path.exists(os.path.expanduser('~/.youtubeaface/cache.json')):
+        new_cache = {'videos': []}
+        with open(os.path.expanduser('~/.youtubeaface/cache.json'), 'w') as new_cache_file:
+            new_cache_file.write(json.dumps(new_cache))
+    with open(os.path.expanduser('~/.youtubeaface/cache.json'), 'r') as cache_file:
+        return json.loads(cache_file.read())
+
+def write_cache(updated_cache):
+    with open(os.path.expanduser('~/.youtubeaface/cache.json'), 'w') as cache_file:
+        cache_file.write(json.dumps(updated_cache))
+
+if __name__ == '__main__':
+    config = open_or_create_config()
+    cache = open_or_create_cache()
+
+    for channel in config['channels']:
+        feed = feedparser.parse(youtube_rss_generic_url % channel)
+        idRe = re.compile(r".*videos/(.*)")
+        for item in feed['items'][0:config['max_vids_per_channel']]:
+            videoId = idRe.match(item['id']).group(1)
+            if videoId not in [x['id'] for x in cache['videos']]:
+                download_video(item)
+                cache['videos'].append({'id': videoId, 'downloaded': datetime.datetime.now().strftime('%Y-%m-%dT%H:%M:%S'), 'channel': channel})
+                write_cache(cache)
+
